@@ -17,10 +17,12 @@
 
 ## Sending the batch
 1. Dashboard → tick the people (or **Select all**) → **Start invites for selected**.
-2. Each profile opens with a dark bar at the bottom. Click **Prepare invite** — it clicks Connect and fills your note.
-3. Review, click LinkedIn's **Send**. The next profile opens automatically.
-4. That's it — the person moves to **Sent** and the next profile opens. Only if LinkedIn shows the weekly-limit message does the invite stay in the queue (session pauses).
-5. **Skip** keeps someone in the queue; **Stop** ends the session.
+2. Each profile opens and LinkQueue automatically opens Connect (including from the ⋯ menu), clicks "Add a note" and fills your note.
+3. You click **Send**. That's the only click. The next profile opens after a short random pause.
+4. If LinkedIn shows the weekly-limit message, the invite stays in your queue and the session pauses.
+5. **Retry** re-runs the prep if a page loaded slowly; **Skip** keeps someone in the queue; **Stop** ends the session.
+
+> Why one click and not fully automatic? Unattended bulk invites are exactly what LinkedIn's anti-automation systems flag, and accounts get restricted. Keeping your own Send click keeps your account safe.
 
 ## No double sends
 - Sent people move to the **Sent** tab and never come back into the queue.

@@ -108,12 +108,12 @@
     bar.innerHTML = `
       <div class="cl-top">
         <span class="cl-title"></span>
-        <button class="cl-primary" data-a="prep">Prepare invite</button>
+        <button class="cl-primary" data-a="prep">Retry</button>
         <button class="cl-ghost" data-a="sent">Mark sent</button>
         <button class="cl-ghost" data-a="skip">Skip</button>
         <button class="cl-ghost" data-a="stop">Stop</button>
       </div>
-      <div class="cl-status">Click “Prepare invite”, review, then click LinkedIn’s Send. The next profile opens automatically.</div>`;
+      <div class="cl-status">Opening the invite with your note — you just click Send. The next profile opens automatically.</div>`;
     bar.querySelector('.cl-title').textContent =
       `Invite ${session.idx + 1} of ${session.ids.length} — ${p ? p.name : slug}`;
     barStatus = bar.querySelector('.cl-status');
@@ -191,7 +191,7 @@
     while (Date.now() < end) {
       await sleep(400);
       if (limitHit()) return 'limit';
-      const dialogOpen = !!document.querySelector('[role="dialog"] textarea, [role="dialog"] button[aria-label*="Send" i]');
+      const dialogOpen = !!visibleTextarea() || !!visibleBtn(/send without a note|^send invitation/i);
       if (!dialogOpen && isPending()) return 'sent';
       if (/invitation sent|invite sent|your invitation to .* was sent/i.test(
         [...document.querySelectorAll('[role="alert"], .artdeco-toast-item, [data-test-artdeco-toast-item-type]')].map(x => x.innerText).join(' ')
@@ -207,6 +207,22 @@
     p.status = 'sent'; p.sentAt = Date.now(); p.sentHow = how;
     await chrome.storage.local.set({ profiles: s.profiles });
   }
+  const MODAL_SEL = '[role="dialog"], [role="alertdialog"], [aria-modal="true"], .artdeco-modal, [class*="modal" i][class*="content" i]';
+  function findModal() {
+    const ms = [...document.querySelectorAll(MODAL_SEL)].filter(visible);
+    if (ms.length) return ms[ms.length - 1];
+    // Fallback: the box holding LinkedIn's invite buttons
+    const b = [...document.querySelectorAll('button')].find(x => visible(x) && /send without a note|add a note|^send invitation$/i.test((x.innerText || '').trim()));
+    return b ? (b.closest('section, [class*="modal" i], [class*="dialog" i]') || b.parentElement?.parentElement?.parentElement) : null;
+  }
+  const visibleBtn = (re) => [...document.querySelectorAll('button, [role="button"]')]
+    .find(b => visible(b) && !inSidebar(b) && re.test(((b.getAttribute('aria-label') || '') + ' ' + (b.innerText || '')).trim()));
+  const visibleTextarea = () => [...document.querySelectorAll('textarea')].filter(visible).pop() || null;
+  const isSendBtn = (b) => {
+    const t = ((b.innerText || '').trim() || (b.getAttribute('aria-label') || '').trim());
+    return /^send( now| invitation| without a note)?$/i.test(t) || /^send invitation/i.test(b.getAttribute('aria-label') || '');
+  };
+
   function findBtnIn(root, re) {
     return [...root.querySelectorAll('button')]
       .find(b => re.test((b.getAttribute('aria-label') || b.innerText || '').trim()));
@@ -250,19 +266,23 @@
     if (!btn) return setStatus('No Connect option found (maybe already connected or Follow-only). Click it yourself, or Skip.');
     btn.click();
 
-    const dialog = await waitFor(() => document.querySelector('[role="dialog"]'), 4000);
-    if (!dialog) return setStatus('Invite dialog did not open — try again or click Connect yourself.');
+    const dialog = await waitFor(() => findModal() || visibleBtn(/add a note|send without a note/i), 5000);
+    if (!dialog) return setStatus('Invite popup did not open — click Prepare invite again, or Skip.');
 
     const note = p ? buildNote(p, settings) : '';
-    if (!note) return setStatus('Dialog open — click Send.');
-    const add = await waitFor(() => findBtnIn(dialog, /add a note/i), 2500);
-    if (!add) return setStatus('No “Add a note” option here — click Send.');
-    add.click();
-    const ta = await waitFor(() => document.querySelector('[role="dialog"] textarea'), 3000);
-    if (!ta) return setStatus('Note box unavailable (free accounts get limited notes) — send without a note, or Skip.');
+    if (!note) return setStatus('Ready — click Send.');
+
+    let ta = visibleTextarea();
+    if (!ta) {
+      const add = await waitFor(() => visibleBtn(/^add a note$|add a note/i), 3000);
+      if (!add) return setStatus('No note option on this one — click Send.');
+      add.click();
+      ta = await waitFor(visibleTextarea, 3000);
+    }
+    if (!ta) return setStatus('Note box unavailable (free accounts get a few notes a month) — click “Send without a note”, or Skip.');
     setNative(ta, note);
     ta.focus();
-    setStatus('Note filled — review it and click Send.');
+    setStatus('Note filled — just click Send.');
   }
 
   async function markAndNext(slug, status, how = 'confirmed') {
@@ -280,7 +300,7 @@
     }
     if (next) {
       await chrome.storage.local.set({ profiles: s.profiles, session });
-      await sleep(800 + Math.random() * 1500);
+      await sleep(4000 + Math.random() * 4000);
       location.href = next.url;
     } else {
       await chrome.storage.local.set({ profiles: s.profiles });
@@ -293,10 +313,8 @@
 
   // Detect LinkedIn's own Send click inside the invite dialog
   document.addEventListener('click', async (e) => {
-    const b = e.target.closest('button');
-    if (!b || !b.closest('[role="dialog"]')) return;
-    const t = (b.getAttribute('aria-label') || b.innerText || '').trim();
-    if (!/^send/i.test(t)) return;
+    const b = e.target.closest('button, [role="button"]');
+    if (!b || !isSendBtn(b) || inSidebar(b)) return;
     const slug = slugOf(location.href);
     const s = await load();
     const p = slug && s.profiles[slug];
@@ -410,6 +428,13 @@
           toast(`Invite to ${p.name} is already pending — marked as sent`, 3500);
           const btn = document.getElementById('cl-save-btn');
           if (btn) setSaveBtn(btn, { status: 'sent', sentAt: Date.now() });
+          return;
+        }
+        // In a session: open Connect and fill the note automatically — you just click Send
+        if (inSession && slugOf(location.href) === slug) {
+          setStatus('Preparing invite…');
+          await sleep(1200 + Math.random() * 1500);
+          if (slugOf(location.href) === slug) prepareInvite(slug);
         }
       }
     } finally {
