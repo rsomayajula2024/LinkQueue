@@ -13,6 +13,19 @@
     return cs.visibility !== 'hidden' && cs.display !== 'none' && cs.opacity !== '0';
   };
 
+  // LinkedIn renders some popups inside shadow roots (e.g. #interop-outlet). Search those too.
+  function allRoots() {
+    const out = [document];
+    const walk = (root) => {
+      for (const el of root.querySelectorAll('*')) {
+        if (el.shadowRoot) { out.push(el.shadowRoot); walk(el.shadowRoot); }
+      }
+    };
+    walk(document);
+    return out;
+  }
+  const qsa = (sel) => allRoots().flatMap(r => [...r.querySelectorAll(sel)]);
+
   async function load() {
     const s = await chrome.storage.local.get(['profiles', 'settings', 'session']);
     return { profiles: s.profiles || {}, settings: s.settings || {}, session: s.session || null };
@@ -144,7 +157,7 @@
 
   function findConnect(name) {
     const first = (name || '').split(/[\s,]+/)[0].toLowerCase();
-    const all = [...document.querySelectorAll(CLICKABLE)].filter(el => visible(el) && !inSidebar(el));
+    const all = qsa(CLICKABLE).filter(el => visible(el) && !inSidebar(el));
 
     // 1) "Invite <this person> to connect" anywhere on the page (top card or More menu)
     const named = first && all.find(el => inviteLabel(el) && (el.getAttribute('aria-label') || '').toLowerCase().includes(first));
@@ -185,10 +198,10 @@
     return [...topCard().querySelectorAll('button')]
       .find(b => /more actions|^more$/i.test((b.getAttribute('aria-label') || b.innerText || '').trim()) && visible(b));
   }
-  const limitHit = () => /weekly invitation limit|reached the weekly limit|invitation limit/i.test(document.body.innerText);
+  const limitHit = () => /weekly invitation limit|reached the weekly limit|invitation limit/i.test(document.body.innerText + ' ' + qsa('[role="dialog"], [role="alertdialog"], .artdeco-modal').map(x => x.innerText).join(' '));
 
   const sentToast = () => /invitation sent|invite sent|your invitation to .* was sent/i.test(
-    [...document.querySelectorAll('[role="alert"], [aria-live], .artdeco-toast-item, [data-test-artdeco-toast-item-type]')].map(x => x.innerText).join(' '));
+    qsa('[role="alert"], [aria-live], .artdeco-toast-item, [data-test-artdeco-toast-item-type]').map(x => x.innerText).join(' '));
 
   // After Send: wait for LinkedIn to confirm (button turns "Pending" or an "invitation sent" toast)
   async function verifySend() {
@@ -214,15 +227,15 @@
   }
   const MODAL_SEL = '[role="dialog"], [role="alertdialog"], [aria-modal="true"], .artdeco-modal, [class*="modal" i][class*="content" i]';
   function findModal() {
-    const ms = [...document.querySelectorAll(MODAL_SEL)].filter(visible);
+    const ms = qsa(MODAL_SEL).filter(visible);
     if (ms.length) return ms[ms.length - 1];
     // Fallback: the box holding LinkedIn's invite buttons
-    const b = [...document.querySelectorAll('button')].find(x => visible(x) && /send without a note|add a note|^send invitation$/i.test((x.innerText || '').trim()));
+    const b = qsa('button').find(x => visible(x) && /send without a note|add a note|^send invitation$/i.test((x.innerText || '').trim()));
     return b ? (b.closest('section, [class*="modal" i], [class*="dialog" i]') || b.parentElement?.parentElement?.parentElement) : null;
   }
-  const visibleBtn = (re) => [...document.querySelectorAll('button, [role="button"]')]
+  const visibleBtn = (re) => qsa('button, [role="button"]')
     .find(b => visible(b) && !inSidebar(b) && re.test(((b.getAttribute('aria-label') || '') + ' ' + (b.innerText || '')).trim()));
-  const visibleTextarea = () => [...document.querySelectorAll('textarea')].filter(visible).pop() || null;
+  const visibleTextarea = () => qsa('textarea').filter(visible).pop() || null;
   const isSendBtn = (b) => {
     const t = ((b.innerText || '').trim() || (b.getAttribute('aria-label') || '').trim());
     return /^send( now| invitation| without a note)?$/i.test(t) || /^send invitation/i.test(b.getAttribute('aria-label') || '');
@@ -235,8 +248,8 @@
   function setNative(ta, value) {
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
     setter.call(ta, value);
-    ta.dispatchEvent(new Event('input', { bubbles: true }));
-    ta.dispatchEvent(new Event('change', { bubbles: true }));
+    ta.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    ta.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
   }
 
   function buildNote(p, settings) {
@@ -298,6 +311,7 @@
     }
     if (!ta) return setStatus('Note box unavailable (free accounts get a few notes a month) — click “Send without a note”, or Skip.');
     setNative(ta, note);
+    if (ta.value !== note) { ta.focus(); document.execCommand && document.execCommand('insertText', false, note); }
     ta.focus();
     setStatus('Note filled — just click Send.');
   }
@@ -347,7 +361,7 @@
 
   // Detect LinkedIn's own Send click inside the invite dialog
   document.addEventListener('click', async (e) => {
-    const b = e.target.closest('button, [role="button"]');
+    const b = e.composedPath().find(n => n instanceof Element && n.matches('button, [role="button"]'));
     if (!b || !isSendBtn(b) || inSidebar(b)) return;
     const slug = slugOf(location.href);
     const s = await load();
