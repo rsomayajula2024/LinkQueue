@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LinkQueue",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Save profiles to invite later when your weekly invite limit is hit. Get a reminder when it resets. Free, private, no tracking.",
   "permissions": ["storage", "alarms", "notifications", "contextMenus"],
   "host_permissions": ["https://www.linkedin.com/*"],

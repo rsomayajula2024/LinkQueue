@@ -108,6 +108,7 @@
     bar.innerHTML = `
       <div class="cl-top">
         <span class="cl-title"></span>
+        <button class="cl-primary" data-a="next" style="display:none">Next →</button>
         <button class="cl-primary" data-a="prep">Retry</button>
         <button class="cl-ghost" data-a="sent">Mark sent</button>
         <button class="cl-ghost" data-a="skip">Skip</button>
@@ -120,6 +121,7 @@
     bar.addEventListener('click', async (e) => {
       const a = e.target.closest('button')?.dataset.a;
       if (a === 'prep') prepareInvite(slug);
+      if (a === 'next') markAndNext(slug, 'sent', 'confirmed');
       if (a === 'sent') markAndNext(slug, 'sent', 'manual');
       if (a === 'skip') markAndNext(slug, 'queued');
       if (a === 'stop') { await chrome.storage.local.remove('session'); removeUI(); render(true); }
@@ -184,6 +186,9 @@
       .find(b => /more actions|^more$/i.test((b.getAttribute('aria-label') || b.innerText || '').trim()) && visible(b));
   }
   const limitHit = () => /weekly invitation limit|reached the weekly limit|invitation limit/i.test(document.body.innerText);
+
+  const sentToast = () => /invitation sent|invite sent|your invitation to .* was sent/i.test(
+    [...document.querySelectorAll('[role="alert"], [aria-live], .artdeco-toast-item, [data-test-artdeco-toast-item-type]')].map(x => x.innerText).join(' '));
 
   // After Send: wait for LinkedIn to confirm (button turns "Pending" or an "invitation sent" toast)
   async function verifySend() {
@@ -255,7 +260,7 @@
     const p = profiles[slug];
     const name = scrape().name || (p && p.name !== slug ? p.name : '');
 
-    if (isPending()) { setStatus('Invite already pending — marked as sent, moving on.'); await sleep(1200); return markAndNext(slug, 'sent', 'detected'); }
+    if (isPending()) { await markSent(slug, 'detected'); setStatus('Invite already pending — marked as sent. Click Next →'); return showNext(); }
 
     setStatus('Opening Connect…');
     let btn = findConnect(name);
@@ -266,8 +271,20 @@
     if (!btn) return setStatus('No Connect option found (maybe already connected or Follow-only). Click it yourself, or Skip.');
     btn.click();
 
-    const dialog = await waitFor(() => findModal() || visibleBtn(/add a note|send without a note/i), 5000);
-    if (!dialog) return setStatus('Invite popup did not open — click Prepare invite again, or Skip.');
+    const outcome = await waitFor(() => {
+      if (limitHit()) return 'limit';
+      if (sentToast() || isPending()) return 'sent';
+      if (findModal() || visibleBtn(/add a note|send without a note/i)) return 'popup';
+      return null;
+    }, 6000);
+    if (outcome === 'limit') return handleLimit();
+    if (outcome === 'sent') {
+      await markSent(slug, 'confirmed');
+      setStatus(`✓ LinkedIn sent this invite straight away (no note option for ${p ? p.name.split(' ')[0] : 'this person'}). Click Next →`);
+      showNext();
+      return;
+    }
+    if (!outcome) return setStatus('Invite popup did not open — click Retry, or Skip.');
 
     const note = p ? buildNote(p, settings) : '';
     if (!note) return setStatus('Ready — click Send.');
@@ -283,6 +300,23 @@
     setNative(ta, note);
     ta.focus();
     setStatus('Note filled — just click Send.');
+  }
+
+  async function handleLimit() {
+    const s = await load();
+    s.settings.limitHitAt = Date.now();
+    s.settings.resetNotified = false;
+    await chrome.storage.local.set({ settings: s.settings });
+    await chrome.storage.local.remove('session');
+    setStatus('Weekly limit reached — this invite was NOT sent and stays in your queue. Session paused; you’ll get a notification when it resets.');
+    toast('Weekly limit reached — invite not sent', 5000);
+  }
+
+  function showNext() {
+    const bar = document.getElementById('cl-bar');
+    if (!bar) return;
+    bar.querySelector('[data-a="next"]').style.display = '';
+    ['prep', 'sent'].forEach(a => { const b = bar.querySelector(`[data-a="${a}"]`); if (b) b.style.display = 'none'; });
   }
 
   async function markAndNext(slug, status, how = 'confirmed') {
@@ -324,15 +358,7 @@
     setStatus('Confirming with LinkedIn…');
     const result = await verifySend();
 
-    if (result === 'limit') {
-      s.settings.limitHitAt = Date.now();
-      s.settings.resetNotified = false;
-      await chrome.storage.local.set({ settings: s.settings });
-      await chrome.storage.local.remove('session');
-      setStatus('Weekly limit reached — this invite was NOT sent and stays in your queue. Session paused; you’ll get a notification when it resets.');
-      toast('Weekly limit reached — invite not sent', 5000);
-      return;
-    }
+    if (result === 'limit') return handleLimit();
     if (result === 'sent') {
       if (inSession) {
         setStatus('✓ Invite sent — opening next profile…');
@@ -423,7 +449,7 @@
       if (p && p.status === 'queued') {
         await waitFor(() => findConnect(p.name) || isPending() || findMore(), 4000);
         if (isPending() && slugOf(location.href) === slug) {
-          if (inSession) { setStatus('Invite already pending — marked as sent, moving on.'); await sleep(1200); return markAndNext(slug, 'sent', 'detected'); }
+          if (inSession) { await markSent(slug, 'detected'); setStatus('Invite already pending — marked as sent. Click Next →'); return showNext(); }
           await markSent(slug, 'detected');
           toast(`Invite to ${p.name} is already pending — marked as sent`, 3500);
           const btn = document.getElementById('cl-save-btn');
