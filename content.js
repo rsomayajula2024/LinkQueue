@@ -244,6 +244,11 @@
       await waitFor(() => document.querySelector('main h1'), 8000);
       if (slugOf(location.href) !== slug) return;
       const { profiles, session } = await load();
+      const p = profiles[slug];
+      if (p && (p.name === slug || (p.headline || '').startsWith('(added by URL'))) {
+        const { name, headline } = scrape();
+        if (name) { p.name = name; p.headline = headline; await chrome.storage.local.set({ profiles }); }
+      }
       injectSaveButton(slug, profiles[slug]);
       if (session && session.ids[session.idx] === slug) injectSessionBar(slug, profiles[slug], session);
     } finally {
