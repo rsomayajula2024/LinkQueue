@@ -1,0 +1,86 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Connect Later – Queue</title>
+<style>
+  :root { --blue:#0a66c2; --green:#0a8f3c; --amber:#b26b00; --bg:#f3f2ef; --card:#fff; --muted:#666; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); font:14px -apple-system, Segoe UI, Roboto, sans-serif; color:#1d2226; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 16px; }
+  .card { background:var(--card); border-radius:10px; padding:16px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  button { border:none; border-radius:18px; padding:8px 14px; font-weight:600; cursor:pointer; background:#e8e8e8; }
+  button.primary { background:var(--blue); color:#fff; }
+  button.danger { background:#fbe9e9; color:#a00; }
+  button:disabled { opacity:.5; cursor:default; }
+  .pill { padding:4px 10px; border-radius:12px; font-weight:600; color:#fff; }
+  .ready { background:var(--green); } .wait { background:var(--amber); }
+  textarea, input[type=text], input[type=number] { font:inherit; border:1px solid #ccc; border-radius:6px; padding:6px 8px; }
+  textarea { width:100%; min-height:60px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid #eee; vertical-align:top; }
+  th { font-size:12px; text-transform:uppercase; color:var(--muted); }
+  td.head { color:var(--muted); max-width:320px; }
+  td input.note { width:100%; }
+  a { color:var(--blue); text-decoration:none; font-weight:600; }
+  .tabs button.active { background:#1d2226; color:#fff; }
+  .muted { color:var(--muted); }
+  .empty { padding:24px; text-align:center; color:var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Connect Later</h1>
+
+  <div class="card">
+    <div class="row">
+      <strong>Weekly limit:</strong> <span id="limitPill" class="pill"></span>
+      <span id="limitText" class="muted"></span>
+      <span style="flex:1"></span>
+      <button id="hitToday">I hit my limit today</button>
+      <button id="clearLimit">Clear</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="margin-bottom:10px">
+      <label><strong>Your name</strong> <input id="myName" type="text" placeholder="e.g. Priya Sharma" style="width:220px"></label>
+      <span class="muted">Used as {myName} in the note.</span>
+    </div>
+    <strong>Default invite note</strong> <span class="muted">— uses {firstName} and {myName}. A per-person note overrides this.</span>
+    <textarea id="template" placeholder="Hi {firstName}, enjoyed your post on AI governance — would love to connect."></textarea>
+    <div class="row" style="margin-top:8px">
+      <label>Max note length <input id="maxLen" type="number" min="50" max="300" style="width:80px"></label>
+      <span id="tplCount" class="muted"></span>
+      <span style="flex:1"></span>
+      <button id="saveTpl">Save</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row tabs" style="margin-bottom:12px">
+      <button data-tab="queued" class="active">Queue <span id="cQueued"></span></button>
+      <button data-tab="sent">Sent <span id="cSent"></span></button>
+      <span style="flex:1"></span>
+      <input id="addUrl" type="text" placeholder="Paste a linkedin.com/in/… URL" style="width:280px">
+      <button id="addBtn">Add</button>
+    </div>
+    <div class="row" id="queueActions" style="margin-bottom:8px">
+      <button id="selAll">Select all</button>
+      <button id="selNone">Select none</button>
+      <button id="removeSel" class="danger">Remove selected</button>
+      <span style="flex:1"></span>
+      <button id="start" class="primary">Start invites for selected (0)</button>
+    </div>
+    <div class="row" id="sentActions" style="margin-bottom:8px; display:none">
+      <button id="exportCsv">Export all to CSV</button>
+      <button id="clearSent" class="danger">Clear sent list</button>
+    </div>
+    <div id="list"></div>
+  </div>
+</div>
+<script src="dashboard.js"></script>
+</body>
+</html>
