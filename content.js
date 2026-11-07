@@ -23,9 +23,25 @@
 
   // ---------- page scraping ----------
   function scrape() {
-    const name = (document.querySelector('main h1')?.innerText || '').trim();
-    const headline = (document.querySelector('main .text-body-medium.break-words')?.innerText || '').trim();
-    return { name, headline };
+    let name = (document.querySelector('main h1')?.innerText || document.querySelector('h1')?.innerText || '').trim();
+    if (!name) {
+      // Page title looks like "(3) Jane Doe | LinkedIn"
+      const t = document.title.replace(/^\(\d+\+?\)\s*/, '').split('|')[0].trim();
+      if (t && !/^linkedin$/i.test(t) && !/feed|notifications|messaging|search/i.test(t)) name = t;
+    }
+    if (!name) {
+      name = (document.querySelector('meta[property="og:title"]')?.content || '').split('|')[0].trim();
+    }
+    const hSel = ['main .text-body-medium.break-words', 'main [data-generated-suggestion-target]', 'main h1 ~ div .text-body-medium'];
+    let headline = '';
+    for (const s of hSel) { headline = (document.querySelector(s)?.innerText || '').trim(); if (headline) break; }
+    return { name: name.length > 80 ? '' : name, headline };
+  }
+
+  // The profile's top card (header section), so we don't touch "People also viewed" buttons
+  function topCard() {
+    const h1 = document.querySelector('main h1');
+    return h1?.closest('section') || document.querySelector('main section') || document.querySelector('main') || document.body;
   }
 
   // ---------- UI ----------
@@ -46,7 +62,10 @@
   function setSaveBtn(btn, p) {
     btn.className = '';
     if (!p) { btn.textContent = '＋ LinkQueue'; }
-    else if (p.status === 'sent') { btn.textContent = '✓ Invite sent'; btn.className = 'sent'; }
+    else if (p.status === 'sent') {
+      const d = p.sentAt ? ' · ' + new Date(p.sentAt).toLocaleDateString([], { day: 'numeric', month: 'short' }) : '';
+      btn.textContent = `✓ Invite sent${d}`; btn.className = 'sent'; btn.title = 'Already invited — no need to send again';
+    }
     else { btn.textContent = '✓ Queued (click to remove)'; btn.className = 'queued'; }
   }
 
@@ -94,7 +113,7 @@
     bar.addEventListener('click', async (e) => {
       const a = e.target.closest('button')?.dataset.a;
       if (a === 'prep') prepareInvite(slug);
-      if (a === 'sent') markAndNext(slug, 'sent');
+      if (a === 'sent') markAndNext(slug, 'sent', 'manual');
       if (a === 'skip') markAndNext(slug, 'queued');
       if (a === 'stop') { await chrome.storage.local.remove('session'); removeUI(); render(true); }
     });
@@ -102,23 +121,50 @@
   }
 
   // ---------- LinkedIn controls ----------
+  const labelOf = (b) => ((b.getAttribute('aria-label') || '') + ' ' + (b.innerText || '')).trim().toLowerCase();
+
   function findConnect(name) {
-    const n = name.toLowerCase();
-    return [...document.querySelectorAll('button, [role="button"]')].find(b => {
-      const l = (b.getAttribute('aria-label') || '').toLowerCase();
-      return /invite .* to connect/.test(l) && l.includes(n) && visible(b);
-    });
+    const n = (name || '').toLowerCase();
+    const isConnect = (b) => /invite .* to connect/.test(labelOf(b)) && visible(b);
+    const all = [...document.querySelectorAll('button, [role="button"]')];
+    // 1) a Connect control naming this person anywhere (covers the "More" dropdown)
+    const named = n && all.find(b => isConnect(b) && labelOf(b).includes(n));
+    if (named) return named;
+    // 2) otherwise the first Connect control in the profile's own header
+    const card = topCard();
+    return [...card.querySelectorAll('button, [role="button"]')].find(isConnect) || null;
   }
-  function isPending(name) {
-    const n = name.toLowerCase();
-    return [...document.querySelectorAll('main button')].some(b => {
-      const l = (b.getAttribute('aria-label') || '').toLowerCase();
-      return l.includes('pending') && l.includes(n);
-    });
+  function isPending() {
+    return [...topCard().querySelectorAll('button, [role="button"]')]
+      .some(b => visible(b) && /\bpending\b|withdraw invitation/.test(labelOf(b)));
   }
   function findMore() {
-    return [...document.querySelectorAll('main button')]
-      .find(b => /more actions/i.test(b.getAttribute('aria-label') || '') && visible(b));
+    return [...topCard().querySelectorAll('button')]
+      .find(b => /more actions|^more$/i.test((b.getAttribute('aria-label') || b.innerText || '').trim()) && visible(b));
+  }
+  const limitHit = () => /weekly invitation limit|reached the weekly limit|invitation limit/i.test(document.body.innerText);
+
+  // After Send: wait for LinkedIn to confirm (button turns "Pending" or an "invitation sent" toast)
+  async function verifySend() {
+    const end = Date.now() + 7000;
+    while (Date.now() < end) {
+      await sleep(400);
+      if (limitHit()) return 'limit';
+      const dialogOpen = !!document.querySelector('[role="dialog"] textarea, [role="dialog"] button[aria-label*="Send" i]');
+      if (!dialogOpen && isPending()) return 'sent';
+      if (/invitation sent|invite sent|your invitation to .* was sent/i.test(
+        [...document.querySelectorAll('[role="alert"], .artdeco-toast-item, [data-test-artdeco-toast-item-type]')].map(x => x.innerText).join(' ')
+      )) return 'sent';
+    }
+    return 'unknown';
+  }
+
+  async function markSent(slug, how) {
+    const s = await load();
+    const p = s.profiles[slug];
+    if (!p) return;
+    p.status = 'sent'; p.sentAt = Date.now(); p.sentHow = how;
+    await chrome.storage.local.set({ profiles: s.profiles });
   }
   function findBtnIn(root, re) {
     return [...root.querySelectorAll('button')]
@@ -150,10 +196,9 @@
   async function prepareInvite(slug) {
     const { profiles, settings } = await load();
     const p = profiles[slug];
-    const name = (p && p.name) || scrape().name;
-    if (!name) return setStatus('Could not read the name on this page. Click Connect yourself, or Skip.');
+    const name = scrape().name || (p && p.name !== slug ? p.name : '');
 
-    if (isPending(name)) { setStatus('Invite already pending — moving on.'); await sleep(1200); return markAndNext(slug, 'sent'); }
+    if (isPending()) { setStatus('Invite already pending — marked as sent, moving on.'); await sleep(1200); return markAndNext(slug, 'sent', 'detected'); }
 
     setStatus('Opening Connect…');
     let btn = findConnect(name);
@@ -179,11 +224,11 @@
     setStatus('Note filled — review it and click Send.');
   }
 
-  async function markAndNext(slug, status) {
+  async function markAndNext(slug, status, how = 'confirmed') {
     const s = await load();
     if (!s.session) return;
     const p = s.profiles[slug];
-    if (p && status === 'sent') { p.status = 'sent'; p.sentAt = Date.now(); }
+    if (p && status === 'sent' && p.status !== 'sent') { p.status = 'sent'; p.sentAt = Date.now(); p.sentHow = how; }
     const session = s.session;
     let next = null;
     session.idx++;
@@ -213,20 +258,35 @@
     if (!/^send/i.test(t)) return;
     const slug = slugOf(location.href);
     const s = await load();
-    if (!s.session || s.session.ids[s.session.idx] !== slug) return;
+    const p = slug && s.profiles[slug];
+    if (!p || p.status !== 'queued') return;
+    const inSession = s.session && s.session.ids[s.session.idx] === slug;
 
-    setStatus('Checking…');
-    await sleep(2000);
-    const body = document.body.innerText;
-    if (/weekly invitation limit|reached the weekly limit|invitation limit/i.test(body)) {
+    setStatus('Confirming with LinkedIn…');
+    const result = await verifySend();
+
+    if (result === 'limit') {
       s.settings.limitHitAt = Date.now();
       s.settings.resetNotified = false;
       await chrome.storage.local.set({ settings: s.settings });
       await chrome.storage.local.remove('session');
-      setStatus('Weekly limit reached — session paused. You’ll get a notification when it resets.');
+      setStatus('Weekly limit reached — this invite was NOT sent and stays in your queue. Session paused; you’ll get a notification when it resets.');
+      toast('Weekly limit reached — invite not sent', 5000);
       return;
     }
-    markAndNext(slug, 'sent');
+    if (result === 'sent') {
+      if (inSession) {
+        setStatus('✓ Invite sent — opening next profile…');
+        toast(`✓ Invite sent to ${p.name}`, 2500);
+        return markAndNext(slug, 'sent', 'confirmed');
+      }
+      await markSent(slug, 'confirmed');
+      toast(`✓ Invite sent to ${p.name} — moved to your Sent list`, 3500);
+      return render(true);
+    }
+    // Could not confirm
+    setStatus('⚠ Couldn’t confirm the invite went through. Check the profile: if it shows “Pending”, click Mark sent; otherwise click Prepare invite to try again.');
+    if (!inSession) toast('Couldn’t confirm the invite — check the profile', 4000);
   }, true);
 
   // ---------- right-click "Add to LinkQueue" ----------
@@ -282,16 +342,29 @@
       removeUI();
       const slug = slugOf(location.href);
       if (!slug) return;
-      await waitFor(() => document.querySelector('main h1'), 8000);
+      await waitFor(() => scrape().name, 8000);
       if (slugOf(location.href) !== slug) return;
       const { profiles, session } = await load();
       const p = profiles[slug];
       if (p && (p.name === slug || !p.headline || p.headline.startsWith('(added by URL'))) {
         const { name, headline } = scrape();
-        if (name) { p.name = name; p.headline = headline; await chrome.storage.local.set({ profiles }); }
+        if (name) { p.name = name; p.headline = headline || p.headline.replace(/^\(added by URL.*\)$/, ''); await chrome.storage.local.set({ profiles }); }
       }
+      const inSession = session && session.ids[session.idx] === slug;
       injectSaveButton(slug, profiles[slug]);
-      if (session && session.ids[session.idx] === slug) injectSessionBar(slug, profiles[slug], session);
+      if (inSession) injectSessionBar(slug, profiles[slug], session);
+
+      // Already invited outside LinkQueue? Detect "Pending" and stop a double send.
+      if (p && p.status === 'queued') {
+        await waitFor(() => findConnect(p.name) || isPending() || findMore(), 4000);
+        if (isPending() && slugOf(location.href) === slug) {
+          if (inSession) { setStatus('Invite already pending — marked as sent, moving on.'); await sleep(1200); return markAndNext(slug, 'sent', 'detected'); }
+          await markSent(slug, 'detected');
+          toast(`Invite to ${p.name} is already pending — marked as sent`, 3500);
+          const btn = document.getElementById('cl-save-btn');
+          if (btn) setSaveBtn(btn, { status: 'sent', sentAt: Date.now() });
+        }
+      }
     } finally {
       rendering = false;
     }

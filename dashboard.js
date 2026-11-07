@@ -78,11 +78,12 @@ function renderList() {
         <td class="muted">${fmt(p.addedAt)}</td></tr>`).join('')}
       </tbody></table>`;
   } else {
-    $('list').innerHTML = `<table><thead><tr><th>Name</th><th>Headline</th><th>Sent</th></tr></thead><tbody>
+    $('list').innerHTML = `<table><thead><tr><th>Name</th><th>Headline</th><th>Sent</th><th>Status</th></tr></thead><tbody>
       ${rows.map(p => `<tr>
         <td><a href="${esc(p.url)}" target="_blank">${esc(p.name)}</a></td>
         <td class="head">${esc(p.headline)}</td>
-        <td class="muted">${p.sentAt ? fmt(p.sentAt) : ''}</td></tr>`).join('')}
+        <td class="muted">${p.sentAt ? fmt(p.sentAt) : ''}</td>
+        <td>${{ confirmed: '✓ Confirmed by LinkedIn', detected: '✓ Was already pending', manual: 'Marked sent by you' }[p.sentHow] || '✓ Sent'}</td></tr>`).join('')}
       </tbody></table>`;
   }
 }
