@@ -13,7 +13,7 @@ Productivity
 Ran out of weekly connection invites just as you found someone worth connecting with? LinkQueue remembers them for you.
 
 HOW IT WORKS
-• Click "+ LinkQueue" on any profile to add it to your queue
+• Click "+ LinkQueue" on any profile, or right-click any person's name anywhere and choose "Add to LinkQueue"
 • Log the day you hit your weekly limit, and get a notification when it resets
 • Open the dashboard, tick the people you want, and click Start
 • Each profile opens in turn. Click "Prepare invite" to open the invite dialog with your note filled in, then click Send. The next profile opens automatically.
@@ -40,6 +40,7 @@ Lets users save professional profiles to send connection invites to later, and r
 - storage: Saves the user's queue of profiles, notes and settings locally in the browser.
 - alarms: Periodically checks whether the user's weekly invite limit has reset so the extension can remind them.
 - notifications: Notifies the user when their weekly invite limit has reset and profiles are waiting.
+- contextMenus: Adds an "Add to LinkQueue" right-click option on profile links so users can queue a person without opening their profile.
 - Host permission (linkedin.com): Adds the "LinkQueue" button to profile pages and helps open the invite dialog when the user clicks "Prepare invite".
 
 ## Remote code

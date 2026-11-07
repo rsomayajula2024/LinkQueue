@@ -9,6 +9,7 @@
 
 ## Daily use
 - On any LinkedIn profile, click the blue **＋ LinkQueue** button (bottom right). It turns green = queued.
+- Or right-click any person's name or photo anywhere on LinkedIn (feed, comments, search, "People you may know") → **Add to LinkQueue**. No need to open the profile.
 - When LinkedIn says your weekly limit is hit, open the dashboard (click the extension icon) → **I hit my limit today**.
   (If you hit it during an invite session, this is recorded automatically.)
 - Badge on the icon = number queued. Amber = limit still active, green = ready.

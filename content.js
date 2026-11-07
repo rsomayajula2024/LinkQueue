@@ -229,6 +229,47 @@
     markAndNext(slug, 'sent');
   }, true);
 
+  // ---------- right-click "Add to LinkQueue" ----------
+  let lastLink = null;
+  document.addEventListener('contextmenu', (e) => {
+    lastLink = e.target.closest && e.target.closest('a[href*="/in/"]');
+  }, true);
+
+  function nameFromLink(a) {
+    if (!a) return '';
+    const hidden = a.querySelector('[aria-hidden="true"]');
+    const text = (hidden?.innerText || a.innerText || '').split('\n').map(s => s.trim()).filter(Boolean);
+    let n = text[0] || '';
+    n = n.replace(/^View\s+/i, '').replace(/[’']s\s+profile.*$/i, '').trim();
+    return n.length > 60 ? '' : n;
+  }
+
+  chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+    if (msg?.type !== 'lq-add') return;
+    (async () => {
+      const slug = slugOf(msg.url);
+      if (!slug) return reply({ ok: false });
+      const s = await load();
+      const ex = s.profiles[slug];
+      if (ex) {
+        toast(ex.status === 'sent' ? `Already invited: ${ex.name}` : `Already queued: ${ex.name}`, 2500);
+        return reply({ ok: true });
+      }
+      const name = nameFromLink(lastLink);
+      s.profiles[slug] = {
+        id: slug, name: name || slug,
+        headline: name ? '' : '(added by URL — name fills in when you visit)',
+        url: `https://www.linkedin.com/in/${encodeURIComponent(slug)}/`,
+        note: '', addedAt: Date.now(), status: 'queued'
+      };
+      await chrome.storage.local.set({ profiles: s.profiles });
+      toast(`✓ Added to LinkQueue: ${name || slug}`, 2500);
+      if (slugOf(location.href) === slug) render(true);
+      reply({ ok: true });
+    })();
+    return true;
+  });
+
   // ---------- render loop (LinkedIn is a single-page app) ----------
   let lastUrl = '';
   let rendering = false;
@@ -245,7 +286,7 @@
       if (slugOf(location.href) !== slug) return;
       const { profiles, session } = await load();
       const p = profiles[slug];
-      if (p && (p.name === slug || (p.headline || '').startsWith('(added by URL'))) {
+      if (p && (p.name === slug || !p.headline || p.headline.startsWith('(added by URL'))) {
         const { name, headline } = scrape();
         if (name) { p.name = name; p.headline = headline; await chrome.storage.local.set({ profiles }); }
       }

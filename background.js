@@ -7,8 +7,37 @@ async function getState() {
 
 function setup() {
   chrome.alarms.create('resetCheck', { periodInMinutes: 30 });
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: 'lq-add',
+      title: 'Add to LinkQueue',
+      contexts: ['link'],
+      targetUrlPatterns: ['https://www.linkedin.com/in/*', 'https://linkedin.com/in/*']
+    });
+  });
   refreshBadge();
 }
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId !== 'lq-add' || !info.linkUrl) return;
+  try {
+    // Content script saves it with the visible name and shows a toast
+    await chrome.tabs.sendMessage(tab.id, { type: 'lq-add', url: info.linkUrl });
+  } catch {
+    // Fallback: save with the URL slug; the name fills in on first visit
+    const m = info.linkUrl.match(/linkedin\.com\/in\/([^\/?#]+)/i);
+    if (!m) return;
+    const slug = decodeURIComponent(m[1]).toLowerCase();
+    const { profiles } = await getState();
+    if (profiles[slug]) return;
+    profiles[slug] = {
+      id: slug, name: slug, headline: '(added by URL — name fills in when you visit)',
+      url: `https://www.linkedin.com/in/${encodeURIComponent(slug)}/`,
+      note: '', addedAt: Date.now(), status: 'queued'
+    };
+    await chrome.storage.local.set({ profiles });
+  }
+});
 chrome.runtime.onInstalled.addListener(setup);
 chrome.runtime.onStartup.addListener(setup);
 

@@ -20,6 +20,7 @@ When you click "LinkQueue" on a profile, the extension saves the following **onl
 - **storage**: save your queue and settings locally.
 - **alarms**: check periodically whether your weekly limit has reset.
 - **notifications**: tell you when the limit has reset.
+- **contextMenus**: add an "Add to LinkQueue" option when you right-click a profile link.
 - **Access to linkedin.com**: show the "LinkQueue" button on profile pages and help open the invite dialog.
 
 ## Deleting your data
