@@ -45,7 +45,7 @@
 
   function setSaveBtn(btn, p) {
     btn.className = '';
-    if (!p) { btn.textContent = '＋ Connect Later'; }
+    if (!p) { btn.textContent = '＋ LinkQueue'; }
     else if (p.status === 'sent') { btn.textContent = '✓ Invite sent'; btn.className = 'sent'; }
     else { btn.textContent = '✓ Queued (click to remove)'; btn.className = 'queued'; }
   }

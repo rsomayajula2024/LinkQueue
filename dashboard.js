@@ -62,8 +62,8 @@ function renderList() {
   const rows = tab === 'queued' ? queued : sent;
   if (!rows.length) {
     $('list').innerHTML = `<div class="empty">${tab === 'queued'
-      ? 'Nothing queued. On any LinkedIn profile, click the blue “＋ Connect Later” button.'
-      : 'No invites sent through Connect Later yet.'}</div>`;
+      ? 'Nothing queued. On any LinkedIn profile, click the blue “＋ LinkQueue” button.'
+      : 'No invites sent through LinkQueue yet.'}</div>`;
     return;
   }
 
@@ -174,7 +174,7 @@ $('exportCsv').onclick = () => {
   ].map(cell).join(',')));
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
-  a.download = `connect-later-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `linkqueue-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
 };
 $('clearSent').onclick = async () => {

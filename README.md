@@ -1,14 +1,14 @@
-# Connect Later — LinkedIn invite queue
+# LinkQueue — LinkedIn invite queue
 
 ## Install (2 minutes)
-1. Unzip this folder somewhere permanent (e.g. Documents\connect-later).
+1. Unzip this folder somewhere permanent (e.g. Documents\linkqueue).
 2. Open Chrome → `chrome://extensions`
 3. Turn on **Developer mode** (top right).
-4. Click **Load unpacked** → select the `connect-later` folder.
+4. Click **Load unpacked** → select the `linkqueue` folder.
 5. Pin the extension (puzzle icon → pin).
 
 ## Daily use
-- On any LinkedIn profile, click the blue **＋ Connect Later** button (bottom right). It turns green = queued.
+- On any LinkedIn profile, click the blue **＋ LinkQueue** button (bottom right). It turns green = queued.
 - When LinkedIn says your weekly limit is hit, open the dashboard (click the extension icon) → **I hit my limit today**.
   (If you hit it during an invite session, this is recorded automatically.)
 - Badge on the icon = number queued. Amber = limit still active, green = ready.
