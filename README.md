@@ -19,11 +19,11 @@
 1. Dashboard → tick the people (or **Select all**) → **Start invites for selected**.
 2. Each profile opens with a dark bar at the bottom. Click **Prepare invite** — it clicks Connect and fills your note.
 3. Review, click LinkedIn's **Send**. The next profile opens automatically.
-4. LinkQueue waits for LinkedIn to confirm (the button turns "Pending") before moving that person to **Sent** and opening the next profile. If it can't confirm, it stays put so you can check.
+4. That's it — the person moves to **Sent** and the next profile opens. Only if LinkedIn shows the weekly-limit message does the invite stay in the queue (session pauses).
 5. **Skip** keeps someone in the queue; **Stop** ends the session.
 
 ## No double sends
-- Sent people move to the **Sent** tab with a status: Confirmed by LinkedIn, Was already pending, or Marked sent by you.
+- Sent people move to the **Sent** tab and never come back into the queue.
 - On their profile the button shows **✓ Invite sent · date**.
 - If you invited someone outside LinkQueue, it spots the "Pending" button on their profile and marks them sent automatically.
 

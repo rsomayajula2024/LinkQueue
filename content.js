@@ -146,7 +146,7 @@
 
   // After Send: wait for LinkedIn to confirm (button turns "Pending" or an "invitation sent" toast)
   async function verifySend() {
-    const end = Date.now() + 7000;
+    const end = Date.now() + 3000;
     while (Date.now() < end) {
       await sleep(400);
       if (limitHit()) return 'limit';
@@ -284,9 +284,15 @@
       toast(`✓ Invite sent to ${p.name} — moved to your Sent list`, 3500);
       return render(true);
     }
-    // Could not confirm
-    setStatus('⚠ Couldn’t confirm the invite went through. Check the profile: if it shows “Pending”, click Mark sent; otherwise click Prepare invite to try again.');
-    if (!inSession) toast('Couldn’t confirm the invite — check the profile', 4000);
+    // No limit message → Send means sent
+    if (inSession) {
+      setStatus('✓ Invite sent — opening next profile…');
+      toast(`✓ Invite sent to ${p.name}`, 2500);
+      return markAndNext(slug, 'sent', 'confirmed');
+    }
+    await markSent(slug, 'confirmed');
+    toast(`✓ Invite sent to ${p.name} — moved to your Sent list`, 3500);
+    return render(true);
   }, true);
 
   // ---------- right-click "Add to LinkQueue" ----------

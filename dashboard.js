@@ -83,7 +83,7 @@ function renderList() {
         <td><a href="${esc(p.url)}" target="_blank">${esc(p.name)}</a></td>
         <td class="head">${esc(p.headline)}</td>
         <td class="muted">${p.sentAt ? fmt(p.sentAt) : ''}</td>
-        <td>${{ confirmed: '✓ Confirmed by LinkedIn', detected: '✓ Was already pending', manual: 'Marked sent by you' }[p.sentHow] || '✓ Sent'}</td></tr>`).join('')}
+        <td>${{ confirmed: "✓ Sent", detected: '✓ Was already pending', manual: 'Marked sent by you' }[p.sentHow] || "✓ Sent"}</td></tr>`).join('')}
       </tbody></table>`;
   }
 }
