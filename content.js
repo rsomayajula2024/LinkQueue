@@ -4,7 +4,14 @@
     const m = url.match(/linkedin\.com\/in\/([^\/?#]+)/i);
     return m ? decodeURIComponent(m[1]).toLowerCase() : null;
   };
-  const visible = (el) => el && el.offsetParent !== null;
+  // Works for floating menus too (offsetParent is null for position:fixed elements)
+  const visible = (el) => {
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return false;
+    const cs = getComputedStyle(el);
+    return cs.visibility !== 'hidden' && cs.display !== 'none' && cs.opacity !== '0';
+  };
 
   async function load() {
     const s = await chrome.storage.local.get(['profiles', 'settings', 'session']);
@@ -123,16 +130,50 @@
   // ---------- LinkedIn controls ----------
   const labelOf = (b) => ((b.getAttribute('aria-label') || '') + ' ' + (b.innerText || '')).trim().toLowerCase();
 
+  const CLICKABLE = 'button, a, [role="button"], [role="menuitem"], [aria-label*="connect" i]';
+  const inSidebar = (el) => !!el.closest('aside, .scaffold-layout__aside, [data-view-name*="right-rail" i]');
+  const exactConnect = (el) => /^connect$/i.test((el.innerText || '').trim());
+  const inviteLabel = (el) => /invite .* to connect/i.test(el.getAttribute('aria-label') || '');
+
+  function openMenus() {
+    return [...document.querySelectorAll('[role="menu"], .artdeco-dropdown__content, [aria-hidden="false"][class*="dropdown" i], [class*="popover" i]')]
+      .filter(visible);
+  }
+
   function findConnect(name) {
-    const n = (name || '').toLowerCase();
-    const isConnect = (b) => /invite .* to connect/.test(labelOf(b)) && visible(b);
-    const all = [...document.querySelectorAll('button, [role="button"]')];
-    // 1) a Connect control naming this person anywhere (covers the "More" dropdown)
-    const named = n && all.find(b => isConnect(b) && labelOf(b).includes(n));
+    const first = (name || '').split(/[\s,]+/)[0].toLowerCase();
+    const all = [...document.querySelectorAll(CLICKABLE)].filter(el => visible(el) && !inSidebar(el));
+
+    // 1) "Invite <this person> to connect" anywhere on the page (top card or More menu)
+    const named = first && all.find(el => inviteLabel(el) && (el.getAttribute('aria-label') || '').toLowerCase().includes(first));
     if (named) return named;
-    // 2) otherwise the first Connect control in the profile's own header
+
+    const deepest = (els) => els.filter(el => !els.some(o => o !== el && el.contains(o)));
+    const wrap = (el) => el.closest('[role="menuitem"], [role="button"], button, a, li') || el;
+
+    // 2) An item reading exactly "Connect" inside an open More menu
+    for (const menu of openMenus()) {
+      const items = deepest([...menu.querySelectorAll('*')].filter(el => visible(el) && exactConnect(el)));
+      if (items.length) return wrap(items[0]);
+    }
+
+    // 3) A Connect control in the profile's own header
     const card = topCard();
-    return [...card.querySelectorAll('button, [role="button"]')].find(isConnect) || null;
+    const inCard = all.find(el => card.contains(el) && (inviteLabel(el) || exactConnect(el)));
+    if (inCard) return inCard;
+
+    // 4) A "Connect" item floating right next to the ⋯ More button (the open menu)
+    const more = findMore();
+    if (more) {
+      const m = more.getBoundingClientRect();
+      const near = deepest([...document.querySelectorAll('body *')].filter(el => {
+        if (!exactConnect(el) || !visible(el) || inSidebar(el)) return false;
+        const r = el.getBoundingClientRect();
+        return Math.abs(r.left - m.left) < 450 && Math.abs(r.top - m.top) < 550;
+      }));
+      if (near.length) return wrap(near[0]);
+    }
+    return null;
   }
   function isPending() {
     return [...topCard().querySelectorAll('button, [role="button"]')]
