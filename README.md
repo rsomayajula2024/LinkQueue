@@ -1,11 +1,20 @@
-# LinkQueue — LinkedIn invite queue
+# LinkQueue
+
+**Free Chrome extension for when your weekly LinkedIn invite limit runs out.**
+Queue the people you want to connect with, get a reminder when the limit resets, then send each invite — with your personal note filled in — in one click.
+
+Private (everything stays in your browser), no tracking, open source (MIT).
 
 ## Install (2 minutes)
-1. Unzip this folder somewhere permanent (e.g. Documents\linkqueue).
-2. Open Chrome → `chrome://extensions`
-3. Turn on **Developer mode** (top right).
-4. Click **Load unpacked** → select the `linkqueue` folder.
-5. Pin the extension (puzzle icon → pin).
+1. Click the green **Code** button above → **Download ZIP**.
+2. Unzip it somewhere permanent (e.g. `Documents\LinkQueue-main`). Don't delete this folder later — Chrome runs the extension from it.
+3. Open Chrome → go to `chrome://extensions`
+4. Turn on **Developer mode** (top right).
+5. Click **Load unpacked** → select the unzipped folder (the one that contains `manifest.json`).
+6. Pin it: puzzle icon in the toolbar → pin **LinkQueue**.
+7. Click the **LQ** icon → enter **Your name** → **Save**.
+
+**Updating:** download the ZIP again, replace the files in the same folder, then click ↻ on LinkQueue in `chrome://extensions`. Your queue is kept.
 
 ## Daily use
 - On any LinkedIn profile, click the blue **＋ LinkQueue** button (bottom right). It turns green = queued.
@@ -34,4 +43,7 @@
 - Set "Your name" in the dashboard. The default note uses `{firstName}` and `{myName}`. Per-person notes override it.
 - Free LinkedIn accounts get only a few personalised notes per month — if the note box doesn't appear, send without one.
 - All data stays in your browser (chrome.storage). Nothing is sent anywhere.
-- If LinkedIn changes its page layout and "Prepare invite" stops finding the Connect button, just click Connect yourself — the queue, reminders and auto-advance still work.
+- If LinkedIn changes its page layout and **Retry** stops finding the Connect button, click Connect yourself — the queue, reminders and auto-advance still work. Please open an issue so it can be fixed.
+
+## Disclaimer
+LinkQueue is an independent project and is not affiliated with, endorsed by, or sponsored by LinkedIn Corporation. Use it within LinkedIn's User Agreement.
