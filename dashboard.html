@@ -63,6 +63,7 @@
     <div class="row tabs" style="margin-bottom:12px">
       <button data-tab="queued" class="active">Queue <span id="cQueued"></span></button>
       <button data-tab="sent">Sent <span id="cSent"></span></button>
+      <button data-tab="otw">🟢 Open to work <span id="cOtw"></span></button>
       <span style="flex:1"></span>
       <input id="addUrl" type="text" placeholder="Paste a linkedin.com/in/… URL" style="width:280px">
       <button id="addBtn">Add</button>
@@ -77,6 +78,21 @@
     <div class="row" id="sentActions" style="margin-bottom:8px; display:none">
       <button id="exportCsv">Export all to CSV</button>
       <button id="clearSent" class="danger">Clear sent list</button>
+    </div>
+    <div id="otwActions" style="display:none; margin-bottom:8px">
+      <div class="muted" style="margin-bottom:10px">Your connections who show the green <b>#OpenToWork</b> frame or say “open to work” in their headline.
+        To find them, open <a href="https://www.linkedin.com/mynetwork/invite-connect/connections/" target="_blank">My Network → Connections</a>
+        and scroll down. LinkQueue lists them here as you scroll (the green button bottom-right shows the count).</div>
+      <div class="row">
+        <select id="otwFilter"><option value="new">Not contacted yet</option><option value="contacted">Contacted</option><option value="all">All</option></select>
+        <input id="otwSearch" type="text" placeholder="Search name or headline" style="width:220px">
+        <button id="otwSelAll">Select all</button>
+        <button id="otwSelNone">Select none</button>
+        <button id="otwContacted">Mark selected as contacted</button>
+        <button id="otwRemove" class="danger">Remove selected</button>
+        <span style="flex:1"></span>
+        <button id="otwExport">Export CSV</button>
+      </div>
     </div>
     <div id="list"></div>
   </div>

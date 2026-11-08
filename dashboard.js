@@ -1,7 +1,8 @@
 const DEFAULT_NOTE = "Hi {firstName}, I'd like to connect with you here on LinkedIn. I'd appreciate it if you could accept my invitation. Regards, {myName}";
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const $ = (id) => document.getElementById(id);
-let state = { profiles: {}, settings: {} };
+let state = { profiles: {}, settings: {}, otw: {} };
+const otwSel = new Set();
 let tab = 'queued';
 const selected = new Set();
 
@@ -9,12 +10,14 @@ const fmt = (t) => new Date(t).toLocaleString([], { day: 'numeric', month: 'shor
 const esc = (s) => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 async function load() {
-  const s = await chrome.storage.local.get(['profiles', 'settings']);
+  const s = await chrome.storage.local.get(['profiles', 'settings', 'otw']);
   state.profiles = s.profiles || {};
   state.settings = s.settings || {};
+  state.otw = s.otw || {};
 }
 const saveProfiles = () => chrome.storage.local.set({ profiles: state.profiles });
 const saveSettings = () => chrome.storage.local.set({ settings: state.settings });
+const saveOtw = () => chrome.storage.local.set({ otw: state.otw });
 
 function limitReady() {
   const t = state.settings.limitHitAt;
@@ -52,8 +55,11 @@ function renderList() {
   const sent = all.filter(p => p.status === 'sent').sort((a, b) => b.sentAt - a.sentAt);
   $('cQueued').textContent = `(${queued.length})`;
   $('cSent').textContent = `(${sent.length})`;
+  $('cOtw').textContent = `(${Object.values(state.otw).filter(p => p.status !== 'contacted').length})`;
   $('queueActions').style.display = tab === 'queued' ? 'flex' : 'none';
   $('sentActions').style.display = tab === 'sent' ? 'flex' : 'none';
+  $('otwActions').style.display = tab === 'otw' ? 'block' : 'none';
+  if (tab === 'otw') return renderOtw();
 
   for (const id of [...selected]) if (!state.profiles[id] || state.profiles[id].status !== 'queued') selected.delete(id);
   $('start').textContent = `Start invites for selected (${selected.size})`;
@@ -88,10 +94,35 @@ function renderList() {
   }
 }
 
+function renderOtw() {
+  const f = $('otwFilter').value, q = $('otwSearch').value.trim().toLowerCase();
+  const rows = Object.values(state.otw)
+    .filter(p => f === 'all' || (f === 'new' ? p.status !== 'contacted' : p.status === 'contacted'))
+    .filter(p => !q || (p.name + ' ' + p.headline).toLowerCase().includes(q))
+    .sort((a, b) => b.foundAt - a.foundAt);
+  for (const id of [...otwSel]) if (!state.otw[id]) otwSel.delete(id);
+  if (!rows.length) {
+    $('list').innerHTML = `<div class="empty">${Object.keys(state.otw).length ? 'Nobody matches this filter.' : 'No Open to Work connections found yet. Open My Network → Connections and scroll.'}</div>`;
+    return;
+  }
+  const how = { photo: '🟢 Photo frame', headline: 'Headline', profile: 'Profile' };
+  $('list').innerHTML = `<table><thead><tr><th></th><th>Name</th><th>Headline</th><th>Found by</th><th>Found</th><th>Status</th></tr></thead><tbody>
+    ${rows.map(p => `<tr>
+      <td><input type="checkbox" data-otw="${esc(p.id)}" ${otwSel.has(p.id) ? 'checked' : ''}></td>
+      <td><a href="${esc(p.url)}" target="_blank">${esc(p.name)}</a></td>
+      <td class="head">${esc(p.headline)}</td>
+      <td class="muted">${how[p.signal] || ''}</td>
+      <td class="muted">${fmt(p.foundAt)}</td>
+      <td>${p.status === 'contacted' ? '✓ Contacted ' + (p.contactedAt ? '<span class="muted">' + fmt(p.contactedAt) + '</span>' : '') : '<span class="muted">Not yet</span>'}</td></tr>`).join('')}
+    </tbody></table>`;
+}
+
 function renderAll() { renderLimit(); renderList(); }
 
 // ---------- events ----------
 $('list').addEventListener('change', async (e) => {
+  const oc = e.target.closest('input[type=checkbox][data-otw]');
+  if (oc) { oc.checked ? otwSel.add(oc.dataset.otw) : otwSel.delete(oc.dataset.otw); return; }
   const cb = e.target.closest('input[type=checkbox][data-id]');
   if (cb) { cb.checked ? selected.add(cb.dataset.id) : selected.delete(cb.dataset.id); renderList(); return; }
   const note = e.target.closest('input[data-note]');
@@ -164,6 +195,29 @@ $('addBtn').onclick = async () => {
   };
   $('addUrl').value = '';
   await saveProfiles(); renderList();
+};
+
+$('otwFilter').onchange = renderList;
+$('otwSearch').oninput = renderList;
+$('otwSelAll').onclick = () => { document.querySelectorAll('input[data-otw]').forEach(c => { c.checked = true; otwSel.add(c.dataset.otw); }); };
+$('otwSelNone').onclick = () => { otwSel.clear(); renderList(); };
+$('otwContacted').onclick = async () => {
+  if (!otwSel.size) return;
+  otwSel.forEach(id => { if (state.otw[id]) { state.otw[id].status = 'contacted'; state.otw[id].contactedAt = Date.now(); } });
+  otwSel.clear(); await saveOtw(); renderList();
+};
+$('otwRemove').onclick = async () => {
+  if (!otwSel.size || !confirm(`Remove ${otwSel.size} from the Open to work list?`)) return;
+  otwSel.forEach(id => delete state.otw[id]); otwSel.clear(); await saveOtw(); renderList();
+};
+$('otwExport').onclick = () => {
+  const cell = (v) => `"${String(v || '').replace(/"/g, '""')}"`;
+  const lines = [['Name', 'Headline', 'URL', 'Found by', 'Found', 'Status'].join(',')];
+  Object.values(state.otw).forEach(p => lines.push([p.name, p.headline, p.url, p.signal, new Date(p.foundAt).toISOString(), p.status].map(cell).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  a.download = `linkqueue-open-to-work-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
 };
 
 $('exportCsv').onclick = () => {

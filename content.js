@@ -435,6 +435,94 @@
     return true;
   });
 
+  // ---------- Open to Work scanner ----------
+  // On your Connections page (or a people search filtered to 1st connections), finds people who show
+  // LinkedIn's green #OpenToWork photo frame or say "open to work" in their headline, and lists them
+  // in the dashboard's "Open to work" tab. It only reads what is already on your screen; nothing is clicked or sent.
+  const OTW_RE = /#?open[\s_-]?to[\s_-]?work/i;
+  const HEADLINE_RE = /\bopen to (work|new (roles|opportunities)|opportunities)\b|\bactively (looking|seeking)\b|#opentowork|\bseeking (new )?(roles?|opportunities|job)\b/i;
+  const scanPage = () => /^\/mynetwork\/invite-connect\/connections/.test(location.pathname) || /^\/search\/results\/people/.test(location.pathname);
+  const isConnectionsPage = () => /^\/mynetwork\/invite-connect\/connections/.test(location.pathname);
+
+  function cardOf(a) {
+    return a.closest('li, [data-chameleon-result-urn], .entity-result, .mn-connection-card, [data-view-name*="search-entity" i], [data-view-name*="connection" i]')
+      || a.parentElement?.parentElement?.parentElement || a;
+  }
+  function photoSignal(card) {
+    for (const img of card.querySelectorAll('img')) {
+      if (OTW_RE.test(img.getAttribute('alt') || '') || OTW_RE.test(img.getAttribute('src') || '') || OTW_RE.test(img.className || '')) return true;
+    }
+    return [...card.querySelectorAll('[class*="open-to-work" i], [class*="opentowork" i], [aria-label*="open to work" i], [title*="open to work" i]')].length > 0;
+  }
+  function cardText(card) { return (card.innerText || '').split('\n').map(x => x.trim()).filter(Boolean); }
+  function cardHeadline(card, name) {
+    const sel = card.querySelector('[class*="occupation" i], [class*="primary-subtitle" i], .entity-result__primary-subtitle, [class*="subtitle" i]');
+    if (sel && sel.innerText.trim()) return sel.innerText.trim();
+    const lines = cardText(card).filter(l => l !== name && !/^(message|connect|follow|remove|•|·|1st|2nd|3rd\+?|view .*profile|connected on .*)$/i.test(l) && !/^•?\s*1st$/i.test(l));
+    return (lines.find(l => l.length > 12 && !l.startsWith(name)) || '').slice(0, 220);
+  }
+  function isFirstDegree(card) {
+    if (isConnectionsPage()) return true;
+    const t = card.innerText || '';
+    return /[•·]\s*1st/.test(t) || /1st[\s-]degree/i.test(t + ' ' + card.innerHTML) || /(^|\n)\s*1st\s*($|\n)/.test(t);
+  }
+
+  let otwFound = 0, otwBtn = null, otwTimer = null;
+  async function scanOTW(manual) {
+    const seen = new Map();
+    for (const a of (document.querySelector('main') || document).querySelectorAll('a[href*="/in/"]')) {
+      const slug = slugOf(a.href); if (!slug) continue;
+      const prev = seen.get(slug);
+      if (prev && (prev.a.innerText || '').trim()) continue;          // keep the link that carries the name
+      seen.set(slug, { a, card: prev ? prev.card : cardOf(a) });
+    }
+    const s = await chrome.storage.local.get(['otw']); const otw = s.otw || {};
+    let added = 0;
+    for (const [slug, { a, card }] of seen) {
+      if (!isFirstDegree(card)) continue;
+      const alt = [...card.querySelectorAll('img[alt]')].map(i => i.getAttribute('alt').replace(/,?\s*#?open[\s_-]?to[\s_-]?work.*$/i, '').trim()).find(x => x && x.length < 60 && !/photo|picture|image/i.test(x));
+      const name = nameFromLink(a) || alt || cardText(card)[0] || slug;
+      const headline = cardHeadline(card, name);
+      const viaPhoto = photoSignal(card), viaHeadline = HEADLINE_RE.test(headline);
+      if (!viaPhoto && !viaHeadline) continue;
+      const ex = otw[slug];
+      if (ex) { if (!ex.headline && headline) ex.headline = headline; continue; }
+      otw[slug] = { id: slug, name: name.length > 60 ? slug : name, headline, url: `https://www.linkedin.com/in/${encodeURIComponent(slug)}/`,
+        signal: viaPhoto ? 'photo' : 'headline', foundAt: Date.now(), status: 'new' };
+      added++;
+    }
+    if (added) await chrome.storage.local.set({ otw });
+    otwFound += added;
+    if (otwBtn) otwBtn.textContent = `🟢 Open to Work: +${otwFound} found · keep scrolling`;
+    if (manual) toast(added ? `✓ ${added} new Open to Work connection${added > 1 ? 's' : ''} added` : `Checked ${seen.size} people on screen — no new Open to Work found. Scroll for more.`, 3000);
+  }
+  function otwUI() {
+    if (!scanPage()) { otwBtn?.remove(); otwBtn = null; clearInterval(otwTimer); otwTimer = null; return; }
+    if (otwBtn && document.body.contains(otwBtn)) return;
+    otwBtn = document.createElement('button');
+    otwBtn.id = 'lq-otw-btn'; otwFound = 0;
+    otwBtn.textContent = '🟢 Open to Work scan: on · scroll your list';
+    otwBtn.title = 'LinkQueue is listing connections who are Open to Work. Click to scan now. See them in the dashboard → Open to work tab.';
+    otwBtn.onclick = () => scanOTW(true);
+    document.body.appendChild(otwBtn);
+    clearInterval(otwTimer); otwTimer = setInterval(() => { if (scanPage() && document.visibilityState === 'visible') scanOTW(false); }, 2000);
+    scanOTW(false);
+  }
+  // On a connection's own profile: if the photo frame or headline says Open to Work, list them too.
+  async function otwFromProfile(slug) {
+    const card = topCard();
+    const ct = card.innerText || '';
+    const first = /[•·]\s*1st/.test(ct) || /1st[\s-]degree/i.test(ct + ' ' + card.innerHTML) || /(^|\n)\s*1st\s*($|\n)/.test(ct);
+    if (!first) return;
+    const { name, headline } = scrape();
+    if (!photoSignal(card) && !HEADLINE_RE.test(headline) && !/\bopen to work\b/i.test(card.innerText || '')) return;
+    const s = await chrome.storage.local.get(['otw']); const otw = s.otw || {};
+    if (otw[slug]) return;
+    otw[slug] = { id: slug, name: name || slug, headline, url: `https://www.linkedin.com/in/${encodeURIComponent(slug)}/`, signal: photoSignal(card) ? 'photo' : 'profile', foundAt: Date.now(), status: 'new' };
+    await chrome.storage.local.set({ otw });
+  }
+  setInterval(otwUI, 1000);
+
   // ---------- render loop (LinkedIn is a single-page app) ----------
   let lastUrl = '';
   let rendering = false;
@@ -456,6 +544,7 @@
         if (name) { p.name = name; p.headline = headline || p.headline.replace(/^\(added by URL.*\)$/, ''); await chrome.storage.local.set({ profiles }); }
       }
       const inSession = session && session.ids[session.idx] === slug;
+      otwFromProfile(slug).catch(() => {});
       injectSaveButton(slug, profiles[slug]);
       if (inSession) injectSessionBar(slug, profiles[slug], session);
 
