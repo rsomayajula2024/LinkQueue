@@ -454,6 +454,21 @@
     }
     return [...card.querySelectorAll('[class*="open-to-work" i], [class*="opentowork" i], [aria-label*="open to work" i], [title*="open to work" i]')].length > 0;
   }
+  // On list pages LinkedIn bakes the #OPENTOWORK ring into the photo itself (a "framedphoto" image), with no text.
+  // The background script checks the ring colour: green = Open to Work, purple = #Hiring.
+  const frameCache = {};
+  function framedImg(card) { return [...card.querySelectorAll('img')].find(i => /framedphoto/i.test(i.currentSrc || i.src || '')); }
+  async function frameKind(card) {
+    const img = framedImg(card); if (!img) return null;
+    const url = img.currentSrc || img.src;
+    if (!(url in frameCache)) {
+      frameCache[url] = await new Promise((res) => {
+        try { chrome.runtime.sendMessage({ type: 'lq-frame', url }, (r) => res(chrome.runtime.lastError ? 'unknown' : (r && r.kind) || 'unknown')); }
+        catch (e) { res('unknown'); }
+      });
+    }
+    return frameCache[url];
+  }
   function cardText(card) { return (card.innerText || '').split('\n').map(x => x.trim()).filter(Boolean); }
   function cardHeadline(card, name) {
     const sel = card.querySelector('[class*="occupation" i], [class*="primary-subtitle" i], .entity-result__primary-subtitle, [class*="subtitle" i]');
@@ -483,7 +498,7 @@
       const alt = [...card.querySelectorAll('img[alt]')].map(i => i.getAttribute('alt').replace(/,?\s*#?open[\s_-]?to[\s_-]?work.*$/i, '').trim()).find(x => x && x.length < 60 && !/photo|picture|image/i.test(x));
       const name = nameFromLink(a) || alt || cardText(card)[0] || slug;
       const headline = cardHeadline(card, name);
-      const viaPhoto = photoSignal(card), viaHeadline = HEADLINE_RE.test(headline);
+      const viaPhoto = photoSignal(card) || (await frameKind(card)) === 'otw', viaHeadline = HEADLINE_RE.test(headline);
       if (!viaPhoto && !viaHeadline) continue;
       const ex = otw[slug];
       if (ex) { if (!ex.headline && headline) ex.headline = headline; continue; }
@@ -496,8 +511,39 @@
     if (otwBtn) otwBtn.textContent = `🟢 Open to Work: +${otwFound} found · keep scrolling`;
     if (manual) toast(added ? `✓ ${added} new Open to Work connection${added > 1 ? 's' : ''} added` : `Checked ${seen.size} people on screen — no new Open to Work found. Scroll for more.`, 3000);
   }
+  // Auto-scroll: moves down your own connections list at a human pace, clicking "Show more results"
+  // when LinkedIn shows it, and stops by itself at the end of the list. Keep this tab in front while it runs.
+  let auto = null;
+  function autoLabel(t) { const b = document.getElementById('lq-otw-auto'); if (b) b.textContent = t; }
+  function cardCount() { return new Set([...(document.querySelector('main') || document).querySelectorAll('a[href*="/in/"]')].map(a => slugOf(a.href)).filter(Boolean)).size; }
+  function moreButton() {
+    return [...document.querySelectorAll('main button, button')].find(b => visible(b) && /^(show more results|show more|load more|see more)$/i.test((b.innerText || '').trim()));
+  }
+  async function autoStep() {
+    if (!auto) return;
+    if (document.visibilityState !== 'visible') { autoLabel('⏸ Paused: bring this tab to the front'); auto.t = setTimeout(autoStep, 3000); return; }
+    const before = cardCount();
+    const more = moreButton();
+    if (more) more.click(); else window.scrollBy({ top: Math.round(window.innerHeight * (0.7 + Math.random() * 0.25)), behavior: 'smooth' });
+    await sleep(1800 + Math.random() * 1700);
+    await scanOTW(false);
+    const now = cardCount();
+    auto.idle = now > before ? 0 : auto.idle + 1;
+    auto.seen = Math.max(auto.seen, now);
+    autoLabel(`⏹ Stop auto-scroll · ${auto.seen} checked · ${otwFound} found`);
+    if (auto.idle >= 8) { stopAuto(`✓ Reached the end of your list: ${auto.seen} checked, ${otwFound} Open to Work found.`); return; }
+    // A short break every ~400 people, so the scrolling looks like a person reading
+    const pause = auto.seen - auto.lastBreak >= 400 ? (auto.lastBreak = auto.seen, 20000 + Math.random() * 20000) : 0;
+    if (pause) autoLabel(`☕ Short break… ${auto.seen} checked · ${otwFound} found`);
+    auto.t = setTimeout(autoStep, pause || 200);
+  }
+  function stopAuto(msg) {
+    if (auto) clearTimeout(auto.t); auto = null;
+    autoLabel('▶ Auto-scroll the whole list');
+    if (msg) toast(msg, 6000);
+  }
   function otwUI() {
-    if (!scanPage()) { otwBtn?.remove(); otwBtn = null; clearInterval(otwTimer); otwTimer = null; return; }
+    if (!scanPage()) { otwBtn?.remove(); otwBtn = null; document.getElementById('lq-otw-auto')?.remove(); clearInterval(otwTimer); otwTimer = null; stopAuto(); return; }
     if (otwBtn && document.body.contains(otwBtn)) return;
     otwBtn = document.createElement('button');
     otwBtn.id = 'lq-otw-btn'; otwFound = 0;
@@ -505,7 +551,11 @@
     otwBtn.title = 'LinkQueue is listing connections who are Open to Work. Click to scan now. See them in the dashboard → Open to work tab.';
     otwBtn.onclick = () => scanOTW(true);
     document.body.appendChild(otwBtn);
-    clearInterval(otwTimer); otwTimer = setInterval(() => { if (scanPage() && document.visibilityState === 'visible') scanOTW(false); }, 2000);
+    const ab = document.createElement('button'); ab.id = 'lq-otw-auto'; ab.textContent = '▶ Auto-scroll the whole list';
+    ab.title = 'Scrolls your connections for you at a normal reading pace and stops at the end. Keep this tab in front.';
+    ab.onclick = () => { if (auto) return stopAuto('Auto-scroll stopped. Click again any time to continue.'); auto = { idle: 0, seen: cardCount(), lastBreak: 0 }; autoLabel('⏹ Stop auto-scroll · starting…'); autoStep(); };
+    document.body.appendChild(ab);
+    clearInterval(otwTimer); otwTimer = setInterval(() => { if (!auto && scanPage() && document.visibilityState === 'visible') scanOTW(false); }, 2000);
     scanOTW(false);
   }
   // On a connection's own profile: if the photo frame or headline says Open to Work, list them too.
@@ -515,10 +565,11 @@
     const first = /[•·]\s*1st/.test(ct) || /1st[\s-]degree/i.test(ct + ' ' + card.innerHTML) || /(^|\n)\s*1st\s*($|\n)/.test(ct);
     if (!first) return;
     const { name, headline } = scrape();
-    if (!photoSignal(card) && !HEADLINE_RE.test(headline) && !/\bopen to work\b/i.test(card.innerText || '')) return;
+    const framed = photoSignal(card) || (await frameKind(card)) === 'otw';
+    if (!framed && !HEADLINE_RE.test(headline) && !/\bopen to work\b/i.test(card.innerText || '')) return;
     const s = await chrome.storage.local.get(['otw']); const otw = s.otw || {};
     if (otw[slug]) return;
-    otw[slug] = { id: slug, name: name || slug, headline, url: `https://www.linkedin.com/in/${encodeURIComponent(slug)}/`, signal: photoSignal(card) ? 'photo' : 'profile', foundAt: Date.now(), status: 'new' };
+    otw[slug] = { id: slug, name: name || slug, headline, url: `https://www.linkedin.com/in/${encodeURIComponent(slug)}/`, signal: framed ? 'photo' : 'profile', foundAt: Date.now(), status: 'new' };
     await chrome.storage.local.set({ otw });
   }
   setInterval(otwUI, 1000);

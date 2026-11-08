@@ -74,3 +74,34 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     });
   }
 });
+
+// ---------- Open to Work ring check ----------
+// The content script sends the URL of a "framed" profile photo. We look at the ring around the edge:
+// LinkedIn's #OPENTOWORK ring is green, the #HIRING ring is purple.
+const frameKinds = {};
+async function classifyFrame(url) {
+  if (frameKinds[url]) return frameKinds[url];
+  const res = await fetch(url, { credentials: 'omit' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const bmp = await createImageBitmap(await res.blob());
+  const w = 100, h = 100, c = new OffscreenCanvas(w, h), g = c.getContext('2d');
+  g.drawImage(bmp, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h).data;
+  let green = 0, purple = 0, n = 0;
+  for (let a = 0; a < 360; a += 3) {
+    for (const rf of [0.40, 0.43, 0.46]) {
+      const x = Math.round(50 + rf * 100 * Math.cos(a * Math.PI / 180)), y = Math.round(50 + rf * 100 * Math.sin(a * Math.PI / 180));
+      const i = (y * w + x) * 4, r = d[i], gr = d[i + 1], b = d[i + 2]; n++;
+      if (gr > 90 && gr > r + 30 && gr > b + 15) green++;
+      else if (b > 90 && b > gr + 35 && r > gr + 10) purple++;
+    }
+  }
+  const kind = green / n > 0.2 && green > purple * 1.5 ? 'otw' : purple / n > 0.2 ? 'hiring' : 'none';
+  frameKinds[url] = kind;
+  return kind;
+}
+chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg?.type !== 'lq-frame' || !/^https:\/\/media\.licdn\.com\//.test(msg.url || '')) return;
+  classifyFrame(msg.url).then((kind) => reply({ kind }), () => reply({ kind: 'unknown' }));
+  return true;
+});

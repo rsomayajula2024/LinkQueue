@@ -37,7 +37,7 @@ Private (everything stays in your browser), no tracking, open source (MIT).
 ## Open to Work (new in 1.5)
 Find your own connections who are looking for a job.
 1. Open **My Network → Connections** (or a people search filtered to **1st** connections).
-2. Scroll down. A green button (bottom right) counts the people LinkQueue spots: anyone with LinkedIn's green **#OpenToWork** photo frame or "open to work" in their headline.
+2. Click **▶ Auto-scroll the whole list** (bottom right), or scroll yourself. LinkQueue spots anyone with LinkedIn's green **#OpenToWork** photo ring (it checks the ring colour, so purple #Hiring rings are skipped) or "open to work" in their headline. Auto-scroll moves at a normal reading pace, takes short breaks, and stops at the end of your list. Keep the tab in front while it runs; about 45 minutes for 6,000 connections.
 3. Open the dashboard → **🟢 Open to work** tab to see them. Tick people and **Mark selected as contacted** once you've messaged them, or **Export CSV**.
 
 It only reads what is already on your screen. Nothing is clicked or sent for you.
