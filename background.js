@@ -38,7 +38,17 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     await chrome.storage.local.set({ profiles });
   }
 });
-chrome.runtime.onInstalled.addListener(setup);
+chrome.runtime.onInstalled.addListener(async () => {
+  setup();
+  // 1.5.0/1.5.1 could put whole groups of people in the Open to work list by mistake: clear it once.
+  const { otw, settings } = await chrome.storage.local.get(['otw', 'settings']);
+  const st = settings || {};
+  if ((st.otwVersion || 0) < 2) {
+    const n = Object.keys(otw || {}).length;
+    st.otwVersion = 2; if (n) st.otwCleared = n;
+    await chrome.storage.local.set({ otw: {}, settings: st });
+  }
+});
 chrome.runtime.onStartup.addListener(setup);
 
 function openDashboard() {

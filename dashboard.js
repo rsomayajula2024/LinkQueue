@@ -240,4 +240,11 @@ $('clearSent').onclick = async () => {
 
 chrome.storage.onChanged.addListener(async () => { await load(); renderAll(); });
 
-(async () => { await load(); renderTemplate(); renderAll(); })();
+(async () => {
+  await load();
+  if (state.settings.otwCleared) {
+    const n = state.settings.otwCleared; delete state.settings.otwCleared; await saveSettings();
+    setTimeout(() => alert(`LinkQueue update: the Open to work list from the previous version had mistakes (${n} entries) and has been cleared. Run the scan again on My Network → Connections.`), 300);
+  }
+  renderTemplate(); renderAll();
+})();

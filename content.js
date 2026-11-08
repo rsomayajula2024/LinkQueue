@@ -444,9 +444,16 @@
   const scanPage = () => /^\/mynetwork\/invite-connect\/connections/.test(location.pathname) || /^\/search\/results\/people/.test(location.pathname);
   const isConnectionsPage = () => /^\/mynetwork\/invite-connect\/connections/.test(location.pathname);
 
+  // A person's row = the biggest box around their link that contains no OTHER person's profile link.
+  // (Using list or section containers made one person's ring and headline count for everyone in the list.)
   function cardOf(a) {
-    return a.closest('li, [data-chameleon-result-urn], .entity-result, .mn-connection-card, [data-view-name*="search-entity" i], [data-view-name*="connection" i]')
-      || a.parentElement?.parentElement?.parentElement || a;
+    const me = slugOf(a.href); let card = a;
+    for (let n = a.parentElement, i = 0; n && n !== document.body && i < 12; n = n.parentElement, i++) {
+      const others = [...n.querySelectorAll('a[href*="/in/"]')].some(x => { const s2 = slugOf(x.href); return s2 && s2 !== me; });
+      if (others) break;
+      card = n;
+    }
+    return card;
   }
   function photoSignal(card) {
     for (const img of card.querySelectorAll('img')) {
